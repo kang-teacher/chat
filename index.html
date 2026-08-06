@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>오목 게임</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f4f4f9;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .status-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .status-box {
+            font-size: 1.2rem;
+            font-weight: bold;
+            padding: 8px 16px;
+            border-radius: 8px;
+            background-color: #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .turn-indicator {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: inline-block;
+            border: 1px solid #ccc;
+        }
+
+        .turn-indicator.black {
+            background-color: #000;
+        }
+
+        .turn-indicator.white {
+            background-color: #fff;
+        }
+
+        button {
+            padding: 8px 16px;
+            font-size: 1rem;
+            font-weight: bold;
+            color: #fff;
+            background-color: #4A90E2;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+        }
+
+        button:hover {
+            background-color: #357ABD;
+        }
+
+        .board-wrapper {
+            padding: 20px;
+            background-color: #DCB35C;
+            border-radius: 8px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.25);
+        }
+
+        canvas {
+            display: block;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>오목 (Omok)</h1>
+
+    <div class="status-container">
+        <div class="status-box">
+            <span>현재 차례:</span>
+            <span id="turnIndicator" class="turn-indicator black"></span>
+            <span id="statusText">흑돌</span>
+        </div>
+        <button onclick="resetGame()">게임 다시 시작</button>
+    </div>
+
+    <div class="board-wrapper">
+        <canvas id="board" width="570" height="570"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('board');
+        const ctx = canvas.getContext('2d');
+        const statusText = document.getElementById('statusText');
+        const turnIndicator = document.getElementById('turnIndicator');
+
+        const BOARD_SIZE = 15; // 15x15 오목판
+        const CELL_SIZE = 36;  // 격자 간격 (px)
+        const PADDING = 33;    // 여백 (px)
+        const STONE_RADIUS = 15;
+
+        // 게임 상태: 0 = 빈칸, 1 = 흑돌, 2 = 백돌
+        let boardState = [];
+        let currentPlayer = 1; // 1: 흑, 2: 백
+        let isGameOver = false;
+
+        // 화점 위치 (15x15 기준)
+        const starPoints = [
+            { row: 3, col: 3 }, { row: 3, col: 11 },
+            { row: 7, col: 7 },
+            { row: 11, col: 3 }, { row: 11, col: 11 }
+        ];
+
+        function initGame() {
+            boardState = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
+            currentPlayer = 1;
+            isGameOver = false;
+            updateStatusUI();
+            drawBoard();
+        }
+
+        function drawBoard() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 격자선 그리기
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 1;
+
+            for (let i = 0; i < BOARD_SIZE; i++) {
+                // 가로선
+                ctx.beginPath();
+                ctx.moveTo(PADDING, PADDING + i * CELL_SIZE);
+                ctx.lineTo(PADDING + (BOARD_SIZE - 1) * CELL_SIZE, PADDING + i * CELL_SIZE);
+                ctx.stroke();
+
+                // 세로선
+                ctx.beginPath();
+                ctx.moveTo(PADDING + i * CELL_SIZE, PADDING);
+                ctx.lineTo(PADDING + i * CELL_SIZE, PADDING + (BOARD_SIZE - 1) * CELL_SIZE);
+                ctx.stroke();
+            }
+
+            // 화점(Star Points) 그리기
+            starPoints.forEach(point => {
+                const x = PADDING + point.col * CELL_SIZE;
+                const y = PADDING + point.row * CELL_SIZE;
+                ctx.beginPath();
+                ctx.arc(x, y, 4, 0, Math.PI * 2);
+                ctx.fillStyle = '#000000';
+                ctx.fill();
+            });
+
+            // 놓인 돌들 그리기
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    if (boardState[r][c] !== 0) {
+                        drawStone(r, c, boardState[r][c]);
+                    }
+                }
+            }
+        }
+
+        function drawStone(row, col, player) {
+            const x = PADDING + col * CELL_SIZE;
+            const y = PADDING + row * CELL_SIZE;
+
+            ctx.beginPath();
+            ctx.arc(x, y, STONE_RADIUS, 0, Math.PI * 2);
+
+            // 입체감을 위한 입체 그라데이션 적용
+            const gradient = ctx.createRadialGradient(
+                x - 3, y - 3, 2,
+                x, y, STONE_RADIUS
+            );
+
+            if (player === 1) { // 흑돌
+                gradient.addColorStop(0, '#666');
+                gradient.addColorStop(1, '#000');
+            } else { // 백돌
+                gradient.addColorStop(0, '#fff');
+                gradient.addColorStop(1, '#ccc');
+            }
+
+            ctx.fillStyle = gradient;
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+            ctx.shadowBlur = 4;
+            ctx.shadowOffsetX = 2;
+            ctx.shadowOffsetY = 2;
+            ctx.fill();
+
+            // 그림자 초기화
+            ctx.shadowColor = 'transparent';
+        }
+
+        canvas.addEventListener('click', (e) => {
+            if (isGameOver) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            // 클릭한 위치를 가장 가까운 격자 교차점으로 변환
+            const col = Math.round((x - PADDING) / CELL_SIZE);
+            const row = Math.round((y - PADDING) / CELL_SIZE);
+
+            // 보드 범위 내이고 빈자리인지 확인
+            if (row >= 0 && row < BOARD_SIZE && col >= 0 && col < BOARD_SIZE) {
+                if (boardState[row][col] === 0) {
+                    boardState[row][col] = currentPlayer;
+                    drawBoard();
+
+                    if (checkWin(row, col, currentPlayer)) {
+                        isGameOver = true;
+                        const winner = currentPlayer === 1 ? '흑돌' : '백돌';
+                        setTimeout(() => alert(`${winner}이 승리했습니다!`), 10);
+                        statusText.textContent = `${winner} 승리!`;
+                        return;
+                    }
+
+                    // 턴 교체
+                    currentPlayer = currentPlayer === 1 ? 2 : 1;
+                    updateStatusUI();
+                }
+            }
+        });
+
+        function updateStatusUI() {
+            if (currentPlayer === 1) {
+                statusText.textContent = '흑돌';
+                turnIndicator.className = 'turn-indicator black';
+            } else {
+                statusText.textContent = '백돌';
+                turnIndicator.className = 'turn-indicator white';
+            }
+        }
+
+        // 승리 조건 검사 (가로, 세로, 두 대각선 방향으로 연속 5개)
+        function checkWin(row, col, player) {
+            const directions = [
+                [[0, 1], [0, -1]],   // 가로
+                [[1, 0], [-1, 0]],   // 세로
+                [[1, 1], [-1, -1]],  // 대각선 ↘ ↖
+                [[1, -1], [-1, 1]]   // 대각선 ↙ ↗
+            ];
+
+            return directions.some(dir => {
+                let count = 1;
+
+                dir.forEach(([dr, dc]) => {
+                    let r = row + dr;
+                    let c = col + dc;
+
+                    while (
+                        r >= 0 && r < BOARD_SIZE &&
+                        c >= 0 && c < BOARD_SIZE &&
+                        boardState[r][c] === player
+                    ) {
+                        count++;
+                        r += dr;
+                        c += dc;
+                    }
+                });
+
+                return count >= 5;
+            });
+        }
+
+        function resetGame() {
+            initGame();
+        }
+
+        // 게임 실행
+        initGame();
+    </script>
+</body>
+</html>
